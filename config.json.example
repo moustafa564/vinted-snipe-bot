@@ -1,12 +1,28 @@
 {
   "searches": [
     {
-      "name": "Test - Nike pas cher",
-      "query_url": "https://www.vinted.fr/catalog?search_text=nike",
+      "name": "Nike - bon état pas cher",
+      "query_url": "https://www.vinted.fr/catalog?search_text=nike+air",
       "brand": "nike",
       "max_price": 50,
-      "quality_keywords": ["neuf","comme neuf","excellent état"],
+      "quality_keywords": ["neuf","comme neuf","excellent état","bon état"],
       "max_sends_per_run": 2
+    },
+    {
+      "name": "Adidas - petites tailles",
+      "query_url": "https://www.vinted.fr/catalog?search_text=adidas+38",
+      "brand": "adidas",
+      "max_price": 40,
+      "quality_keywords": ["comme neuf","neuf","très bon état"],
+      "max_sends_per_run": 2
+    },
+    {
+      "name": "Cartes iTunes / Apple Gift Card (exemple)",
+      "query_url": "https://www.vinted.fr/catalog?search_text=apple+gift+card",
+      "brand": "",
+      "max_price": 5,
+      "quality_keywords": ["carte","itunes","gift","apple"],
+      "max_sends_per_run": 1
     }
   ]
 }
