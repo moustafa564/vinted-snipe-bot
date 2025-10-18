@@ -1,0 +1,12 @@
+{
+  "searches": [
+    {
+      "name": "Test - Apple gift card",
+      "query_url": "https://www.vinted.fr/catalog?search_text=apple+gift+card",
+      "brand": "",
+      "max_price": 10,
+      "quality_keywords": ["carte","itunes","gift","apple"],
+      "max_sends_per_run": 2
+    }
+  ]
+}
