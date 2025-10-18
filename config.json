@@ -5,7 +5,7 @@
       "query_url": "https://www.vinted.fr/catalog?search_text=nike",
       "brand": "nike",
       "max_price": 50,
-      "quality_keywords": ["neuf","comme neuf"]
+      "quality_keywords": ["neuf", "comme neuf"]
     }
   ],
   "check_interval_seconds": 5
