@@ -1,12 +1,11 @@
 const axios = require("axios");
 const { WebhookClient, EmbedBuilder } = require("discord.js");
-const cheerio = require("cheerio");
 const fs = require("fs");
 
 const config = JSON.parse(fs.readFileSync("config.json", "utf-8"));
 const webhook = new WebhookClient({ url: process.env.DISCORD_WEBHOOK });
 
-let seen = {}; // annonces déjà envoyées
+let seen = {}; // pour ne pas renvoyer 2 fois la même annonce
 
 async function fetchVinted(url) {
   try {
@@ -18,22 +17,21 @@ async function fetchVinted(url) {
   }
 }
 
+// Récupère les items depuis le JSON caché dans la page
 function parseVinted(html, search) {
-  const $ = cheerio.load(html);
   const items = [];
+  try {
+    const jsonMatch = html.match(/window\.__INITIAL_STATE__\s?=\s?({.*});/);
+    if (!jsonMatch) return items;
+    const state = JSON.parse(jsonMatch[1]);
+    const catalog = state.catalog?.items || [];
+    
+    for (const it of catalog) {
+      const title = it.title || "–";
+      const url = "https://www.vinted.fr/items/" + it.id;
+      const price = it.price.amount || "–";
+      const thumb = it.photos?.[0]?.url_full || null;
 
-  $('a[href*="/items/"]').each((i, el) => {
-    try {
-      const href = $(el).attr("href");
-      const url = href.startsWith("http") ? href : "https://www.vinted.fr" + href;
-      if (seen[url]) return;
-
-      const title = $(el).find(".ItemBox__title, .title").first().text().trim() || "–";
-      const priceText = $(el).find(".ItemBox__price, .price").first().text().trim();
-      const price = priceText ? parseFloat(priceText.replace(/\D/g, "")) : "–";
-      const thumb = $(el).find("img").attr("src");
-
-      // filtrage marque, prix, qualité
       const txt = title.toLowerCase();
       const brandOk = !search.brand || txt.includes(search.brand.toLowerCase());
       const priceOk = !search.max_price || (price !== "–" && price <= search.max_price);
@@ -46,9 +44,10 @@ function parseVinted(html, search) {
       if (brandOk && priceOk && qualityOk) {
         items.push({ title, url, price, thumb });
       }
-    } catch (e) {}
-  });
-
+    }
+  } catch (err) {
+    console.error("Erreur parse JSON:", err.message);
+  }
   return items;
 }
 
