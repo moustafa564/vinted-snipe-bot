@@ -1,59 +1,87 @@
 const axios = require("axios");
 const { WebhookClient, EmbedBuilder } = require("discord.js");
+const cheerio = require("cheerio");
 const fs = require("fs");
-const config = JSON.parse(fs.readFileSync("config.json", "utf-8"));
 
+const config = JSON.parse(fs.readFileSync("config.json", "utf-8"));
 const webhook = new WebhookClient({ url: process.env.DISCORD_WEBHOOK });
 
-let seen = {}; // annonces déjà vues
+let seen = {}; // annonces déjà envoyées
 
 async function fetchVinted(url) {
   try {
     const res = await axios.get(url);
     return res.data;
-  } catch (e) {
-    console.error("Erreur fetch Vinted:", e.message);
+  } catch (err) {
+    console.error("Erreur fetch Vinted:", err.message);
     return null;
   }
 }
 
-function parseItems(html) {
-  // simple regex pour extraire les liens d'items (approx)
-  const regex = /\/items\/\d+/g;
-  const matches = html.match(regex);
-  if (!matches) return [];
-  // on met https://www.vinted.fr devant si nécessaire
-  return [...new Set(matches)].map(path => "https://www.vinted.fr" + path);
+function parseVinted(html, search) {
+  const $ = cheerio.load(html);
+  const items = [];
+
+  $('a[href*="/items/"]').each((i, el) => {
+    try {
+      const href = $(el).attr("href");
+      const url = href.startsWith("http") ? href : "https://www.vinted.fr" + href;
+      if (seen[url]) return;
+
+      const title = $(el).find(".ItemBox__title, .title").first().text().trim() || "–";
+      const priceText = $(el).find(".ItemBox__price, .price").first().text().trim();
+      const price = priceText ? parseFloat(priceText.replace(/\D/g, "")) : "–";
+      const thumb = $(el).find("img").attr("src");
+
+      // filtrage marque, prix, qualité
+      const txt = title.toLowerCase();
+      const brandOk = !search.brand || txt.includes(search.brand.toLowerCase());
+      const priceOk = !search.max_price || (price !== "–" && price <= search.max_price);
+
+      let qualityOk = true;
+      if (search.quality_keywords && search.quality_keywords.length > 0) {
+        qualityOk = search.quality_keywords.some(q => txt.includes(q.toLowerCase()));
+      }
+
+      if (brandOk && priceOk && qualityOk) {
+        items.push({ title, url, price, thumb });
+      }
+    } catch (e) {}
+  });
+
+  return items;
 }
 
-async function sendDiscord(title, url, price) {
+async function sendDiscord(item, searchName) {
   try {
     const embed = new EmbedBuilder()
-      .setTitle(title)
-      .setURL(url)
+      .setTitle(item.title)
+      .setURL(item.url)
       .addFields(
-        { name: "Prix", value: price ? price + " €" : "–", inline: true }
+        { name: "Prix", value: item.price !== "–" ? item.price + " €" : "–", inline: true },
+        { name: "Recherche", value: searchName || "–", inline: true }
       )
       .setTimestamp()
       .setColor(0x00ff00);
+
+    if (item.thumb) embed.setImage(item.thumb);
+
     await webhook.send({ embeds: [embed] });
-    console.log("[OK] Embed envoyé:", title);
+    console.log("[OK] Embed envoyé:", item.title);
   } catch (err) {
-    console.error("Erreur webhook:", err.message);
+    console.error("[ERR] Envoi Discord:", err.message);
   }
 }
 
 async function checkSearch(search) {
   const html = await fetchVinted(search.query_url);
   if (!html) return;
-  const items = parseItems(html);
-  for (const url of items) {
-    if (!seen[url]) {
-      seen[url] = true;
-      // pour simplifier, titre = dernière partie du lien, prix inconnu (tu peux améliorer)
-      const title = url.split("/").pop();
-      const price = Math.floor(Math.random() * (search.max_price || 50)) + 1; // simule un prix
-      await sendDiscord(title, url, price);
+  const items = parseVinted(html, search);
+
+  for (const item of items) {
+    if (!seen[item.url]) {
+      seen[item.url] = true;
+      await sendDiscord(item, search.name);
     }
   }
 }
