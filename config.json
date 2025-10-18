@@ -1,12 +1,12 @@
 {
   "searches": [
     {
-      "name": "Test - Nike pas cher",
+      "name": "Nike pas cher",
       "query_url": "https://www.vinted.fr/catalog?search_text=nike",
       "brand": "nike",
       "max_price": 50,
-      "quality_keywords": ["neuf","comme neuf","excellent état"],
-      "max_sends_per_run": 2
+      "quality_keywords": ["neuf","comme neuf"]
     }
-  ]
+  ],
+  "check_interval_seconds": 5
 }
