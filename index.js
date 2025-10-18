@@ -1,35 +1,40 @@
-// index.js - Vinted Sniper minimal & prêt
-// Usage: définir DISCORD_WEBHOOK en variable d'environnement (Replit/Render/GitHub Secrets)
+// index.js - vinted-sniper (Render-ready with keepalive)
 const axios = require("axios");
 const cheerio = require("cheerio");
 const fs = require("fs");
 const path = require("path");
+const express = require("express");
 const { WebhookClient } = require("discord.js");
 
 const SEEN_FILE = path.join(__dirname, "seen.json");
+const CONFIG_FILE = path.join(__dirname, "config.json");
+
 const WEBHOOK_URL = process.env.DISCORD_WEBHOOK || "";
-const CHECK_INTERVAL_MS = parseInt(process.env.CHECK_INTERVAL_MS || "60000", 10); // 60s par défaut
-
+const CHECK_INTERVAL_MS = parseInt(process.env.CHECK_INTERVAL_MS || "60000", 10); // 60s
 if (!WEBHOOK_URL) {
-  console.error("ERREUR: définis DISCORD_WEBHOOK (variable d'environnement).");
-  process.exit(1);
+  console.error("ERREUR: définis DISCORD_WEBHOOK en variable d'environnement sur Render.");
+  // on continue pour debug, mais tu devrais ajouter la variable
 }
-const webhook = new WebhookClient({ url: WEBHOOK_URL });
 
-// load config
+const webhook = WEBHOOK_URL ? new WebhookClient({ url: WEBHOOK_URL }) : null;
+
+// load config (fallback to example)
 let config = { searches: [] };
 try {
-  config = JSON.parse(fs.readFileSync(path.join(__dirname,"config.json"),"utf8"));
-} catch(e){
-  console.warn("Aucun config.json ou contenu invalide. Crée config.json depuis config.json.example.");
+  if (fs.existsSync(CONFIG_FILE)) {
+    config = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8"));
+  } else {
+    console.warn("Aucun config.json trouvé — crée config.json à partir de config.json.example");
+  }
+} catch (e) {
+  console.warn("Erreur lecture config.json:", e.message);
 }
 
 // load seen
 let seen = {};
-try { if (fs.existsSync(SEEN_FILE)) seen = JSON.parse(fs.readFileSync(SEEN_FILE,"utf8")) || {}; }
-catch(e){ seen = {}; }
-
-function saveSeen(){ try{ fs.writeFileSync(SEEN_FILE, JSON.stringify(seen, null, 2), "utf8"); }catch(e){} }
+try { if (fs.existsSync(SEEN_FILE)) seen = JSON.parse(fs.readFileSync(SEEN_FILE, "utf8")) || {}; }
+catch(e){ console.warn("Impossible de lire seen.json:", e.message); seen = {}; }
+function saveSeen(){ try{ fs.writeFileSync(SEEN_FILE, JSON.stringify(seen, null, 2), "utf8"); }catch(e){ console.warn("Erreur écriture seen.json:", e.message);} }
 
 function parsePrice(text){
   if(!text) return null;
@@ -64,7 +69,7 @@ async function fetchSearch(search){
 }
 
 async function processAll(){
-  for(const s of config.searches || []){
+  for(const s of (config.searches || [])){
     const found = await fetchSearch(s);
     if(!found) continue;
     const uniq = [];
@@ -84,15 +89,19 @@ async function processAll(){
       }
       // send
       try{
-        const embed = {
-          title: it.title?.substring(0,256) || "Annonce",
-          url: it.link,
-          fields: [{ name:"Prix", value: it.price ? `${it.price} €` : "-", inline:true }],
-          timestamp: new Date().toISOString()
-        };
-        if(it.img) embed.image = { url: it.img };
-        await webhook.send({ embeds: [embed] });
-        console.log("Sent", it.link);
+        if (webhook) {
+          const embed = {
+            title: it.title?.substring(0,256) || "Annonce",
+            url: it.link,
+            fields: [{ name:"Prix", value: it.price ? `${it.price} €` : "-", inline:true }],
+            timestamp: new Date().toISOString()
+          };
+          if(it.img) embed.image = { url: it.img };
+          await webhook.send({ embeds: [embed] });
+          console.log("Sent", it.link);
+        } else {
+          console.log("Webhook non configuré — item:", it.link);
+        }
         seen[it.link] = { t: Date.now(), title: it.title };
         sent++;
       }catch(e){ console.error("Discord send error:", e.message); }
@@ -101,10 +110,30 @@ async function processAll(){
   }
 }
 
-(async function main(){
+let running = true;
+async function loop(){
   console.log("Sniper started, interval ms:", CHECK_INTERVAL_MS);
-  while(true){
-    await processAll();
+  while(running){
+    try {
+      await processAll();
+    } catch(e){
+      console.error("Erreur processAll:", e.message || e);
+    }
     await new Promise(r => setTimeout(r, CHECK_INTERVAL_MS + Math.floor(Math.random()*5000)));
   }
-})();
+}
+
+// --- Express keepalive & health endpoint (important pour Render)
+const app = express();
+app.get("/", (req, res) => res.send("OK - vinted-sniper is running"));
+app.get("/health", (req, res) => res.json({ ok: true, time: Date.now() }));
+const port = process.env.PORT || 3000;
+app.listen(port, () => {
+  console.log("Keepalive server listening on port", port);
+  // start the bot loop after the server listens
+  loop().catch(err => console.error("Loop error:", err));
+});
+
+// graceful shutdown
+process.on("SIGTERM", () => { console.log("SIGTERM received, shutting down..."); running = false; process.exit(0); });
+process.on("SIGINT", () => { console.log("SIGINT received, shutting down..."); running = false; process.exit(0); });
