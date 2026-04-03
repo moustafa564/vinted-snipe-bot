@@ -1,3 +1,4 @@
+await webhook.send("Test Nachricht vom Vinted-Sniper!");
 const axios = require("axios");
 const { WebhookClient, EmbedBuilder } = require("discord.js");
 const fs = require("fs");
