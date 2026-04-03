@@ -1,10 +1,10 @@
 {
   "searches": [
     {
-      "name": "Nike Football Trackjacket",
-      "query_url": "https://www.vinted.at/catalog?search_text=nike%20football%20trackjacket&order=newest_first",
-      "brand": "nike",
-      "max_price": 15,
+      "name": "",
+      "query_url": "",
+      "brand": "",
+      "max_price": 100,
       "quality_keywords": []
     }
   ],
