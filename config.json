@@ -1,12 +1,12 @@
 {
   "searches": [
     {
-      "name": "Nike pas cher",
-      "query_url": "https://www.vinted.fr/catalog?search_text=nike",
+      "name": "Nike Football Trackjacket",
+      "query_url": "https://www.vinted.at/catalog?search_text=nike%20football%20trackjacket&page=1&time=1775238886&size_ids[]=206&size_ids[]=207&size_ids[]=208&size_ids[]=209&size_ids[]=210&brand_ids[]=53&status_ids[]=6&status_ids[]=1&status_ids[]=2&status_ids[]=3&price_to=15&currency=EUR&order=newest_first",
       "brand": "nike",
-      "max_price": 50,
-      "quality_keywords": ["neuf", "comme neuf"]
+      "max_price": 15,
+      "quality_keywords": ["neu", "wie neu"]
     }
   ],
-  "check_interval_seconds": 5
+  "check_interval_seconds": 10
 } 
