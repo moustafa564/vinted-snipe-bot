@@ -13,71 +13,46 @@ let seen = {}; // verhindert doppelte Benachrichtigungen
 
 // --- Funktionen ---
 
-// HTML von Vinted abrufen
-// HTML von Vinted abrufen mit Browser-Headern
+// Items von Vinted API abrufen
 async function fetchVinted(url) {
   try {
     const res = await axios.get(url, {
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-                      "(KHTML, wie Gecko) Chrome/116.0.0.0 Safari/537.36",
-        "Accept-Language": "de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+                      "(KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36",
+        "Accept": "application/json",
       }
     });
 
-    console.log(`[DEBUG] Erste 5000 Zeichen der HTML-Antwort:`);
-    console.log(res.data.slice(0, 5000));
-
-    return res.data;
+    console.log("[DEBUG] Items von API erhalten:", res.data.items?.length || 0);
+    return res.data.items || [];
   } catch (err) {
-    console.error("Fehler beim Abrufen von Vinted:", err.message);
-    return null;
+    console.error("Fehler beim Abrufen von Vinted API:", err.message);
+    return [];
   }
 }
 
-// Items aus HTML parsen
-function parseVinted(html, search) {
-  const items = [];
-  try {
-    const jsonMatch = html.match(/window\.__INITIAL_STATE__\s*=\s*({.+});/);
-    if (!jsonMatch) {
-      console.log("[DEBUG] Kein __INITIAL_STATE__ JSON gefunden!");
-      return items;
+// Items filtern nach Preis, Marke, Keywords
+function filterItems(items, search) {
+  return items.filter(it => {
+    const title = it.title || "";
+    const description = it.description || "";
+    const txt = (title + " " + description).toLowerCase();
+
+    const brandOk = !search.brand || txt.includes(search.brand.toLowerCase());
+    const priceOk = !search.max_price || (it.price?.amount && it.price.amount <= search.max_price);
+    let qualityOk = true;
+    if (search.quality_keywords && search.quality_keywords.length > 0) {
+      qualityOk = search.quality_keywords.some(q => txt.includes(q.toLowerCase()));
     }
 
-    const state = JSON.parse(jsonMatch[1]);
-    console.log("[DEBUG] JSON __INITIAL_STATE__ gefunden, Keys:", Object.keys(state));
-
-    const catalog = state.catalog?.items || [];
-    console.log("[DEBUG] Anzahl Items im Katalog:", catalog.length);
-
-    for (const it of catalog) {
-      const title = it.title || "–";
-      const base = new URL(search.query_url).origin;
-      const url = it.url || `${base}/items/${it.id}`;
-      const price = it.price?.amount || "–";
-      const thumb = it.photos?.[0]?.url_full || null;
-
-      const txt = (title + " " + (it.description || "")).toLowerCase();
-
-      // Filter
-      const brandOk = !search.brand || txt.includes(search.brand.toLowerCase());
-      const priceOk = !search.max_price || (price !== "–" && price <= search.max_price);
-
-      let qualityOk = true;
-      if (search.quality_keywords && search.quality_keywords.length > 0) {
-        qualityOk = search.quality_keywords.some(q => txt.includes(q.toLowerCase()));
-      }
-
-      if (brandOk && priceOk && qualityOk) {
-        items.push({ title, url, price, thumb });
-      }
-    }
-  } catch (err) {
-    console.error("Fehler beim Parsen von Vinted JSON:", err.message);
-  }
-  return items;
+    return brandOk && priceOk && qualityOk;
+  }).map(it => ({
+    title: it.title,
+    url: it.url || `https://www.vinted.fr/items/${it.id}`,
+    price: it.price?.amount || "–",
+    thumb: it.photos?.[0]?.url_full || null
+  }));
 }
 
 // Embed auf Discord senden
@@ -104,16 +79,16 @@ async function sendDiscord(item, searchName) {
 
 // Items prüfen und ggf. senden
 async function checkSearch(search) {
-  const html = await fetchVinted(search.query_url);
-  if (!html) return;
+  const items = await fetchVinted(search.query_url);
+  if (!items.length) return;
 
-  const items = parseVinted(html, search);
-  console.log(`[INFO] ${items.length} Items gefunden für Suche: "${search.name}"`);
+  const filtered = filterItems(items, search);
+  console.log(`[INFO] ${filtered.length} Items nach Filter für Suche: "${search.name}"`);
 
-  for (const item of items) {
+  for (const item of filtered) {
     if (!seen[item.url]) {
       seen[item.url] = true;
-      await sendDiscord(item, search.name); // ⚡ Hier wirklich senden
+      await sendDiscord(item, search.name);
     }
   }
 }
@@ -132,9 +107,8 @@ async function main() {
 
   // Interval starten
   setInterval(async () => {
-    for (const search of config.searches) {
-      await checkSearch(search);
-    }
+    const search = config.searches[0]; // nur erste Suche
+    await checkSearch(search);
   }, config.check_interval_seconds * 1000);
 }
 
