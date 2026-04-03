@@ -95,3 +95,10 @@ async function main() {
 }
 
 main();
+
+sendDiscord({
+  title: "TEST",
+  url: "https://google.com",
+  price: "0",
+  thumb: null
+}, "Test");
