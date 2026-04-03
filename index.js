@@ -14,11 +14,21 @@ let seen = {}; // verhindert doppelte Benachrichtigungen
 // --- Funktionen ---
 
 // HTML von Vinted abrufen
+// HTML von Vinted abrufen mit Browser-Headern
 async function fetchVinted(url) {
   try {
-    const res = await axios.get(url);
+    const res = await axios.get(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+                      "(KHTML, wie Gecko) Chrome/116.0.0.0 Safari/537.36",
+        "Accept-Language": "de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+      }
+    });
+
     console.log(`[DEBUG] Erste 5000 Zeichen der HTML-Antwort:`);
     console.log(res.data.slice(0, 5000));
+
     return res.data;
   } catch (err) {
     console.error("Fehler beim Abrufen von Vinted:", err.message);
