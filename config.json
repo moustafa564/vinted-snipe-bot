@@ -8,5 +8,5 @@
       "quality_keywords": []
     }
   ],
-  "check_interval_seconds": 10
+  "check_interval_seconds": 60
 } 
