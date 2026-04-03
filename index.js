@@ -30,17 +30,22 @@ function parseVinted(html, search) {
   try {
     const jsonMatch = html.match(/window\.__INITIAL_STATE__\s*=\s*({.+});/);
     if (!jsonMatch) return items;
+
     const state = JSON.parse(jsonMatch[1]);
     const catalog = state.catalog?.items || [];
 
     for (const it of catalog) {
       const title = it.title || "–";
-      const url = it.url || ("https://www.vinted.fr/items/" + it.id);
+      const url = it.url || (() => {
+        const base = new URL(search.query_url).origin; // dynamisches Land
+        return base + "/items/" + it.id;
+      })();
       const price = it.price?.amount || "–";
       const thumb = it.photos?.[0]?.url_full || null;
 
       const txt = (title + " " + (it.description || "")).toLowerCase();
 
+      // Filter
       const brandOk = !search.brand || txt.includes(search.brand.toLowerCase());
       const priceOk = !search.max_price || (price !== "–" && price <= search.max_price);
 
@@ -86,9 +91,9 @@ async function checkSearch(search) {
   const html = await fetchVinted(search.query_url);
   if (!html) return;
 
-  console.log("HTML Länge:", html.length);
   const items = parseVinted(html, search);
-  console.log("Gefundene Items:", items);
+
+  console.log(`[INFO] ${items.length} Items gefunden für Suche: "${search.name}"`);
 
   for (const item of items) {
     if (!seen[item.url]) {
@@ -100,14 +105,14 @@ async function checkSearch(search) {
 
 // --- MAIN ---
 async function main() {
-  console.log("Sniper Vinted gestartet alle", config.check_interval_seconds, "Sekunden.");
+  console.log("Sniper Vinted gestartet, alle", config.check_interval_seconds, "Sekunden.");
 
   // Test Webhook beim Start
   try {
     await webhook.send("✅ Vinted-Sniper ist online und Webhook funktioniert!");
-    console.log("Webhook-Test erfolgreich!");
+    console.log("[INFO] Webhook-Test erfolgreich!");
   } catch (err) {
-    console.error("Webhook-Test fehlgeschlagen:", err.message);
+    console.error("[FEHLER] Webhook-Test fehlgeschlagen:", err.message);
   }
 
   // Interval starten
