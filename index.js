@@ -17,6 +17,11 @@ let seen = {}; // verhindert doppelte Benachrichtigungen
 async function fetchVinted(url) {
   try {
     const res = await axios.get(url);
+
+    // 🔹 Debug: Zeige die ersten 5000 Zeichen der HTML-Antwort
+    console.log(`[DEBUG] Erste 5000 Zeichen der HTML-Antwort:`);
+    console.log(res.data.slice(0, 5000));
+
     return res.data;
   } catch (err) {
     console.error("Fehler beim Abrufen von Vinted:", err.message);
@@ -29,10 +34,17 @@ function parseVinted(html, search) {
   const items = [];
   try {
     const jsonMatch = html.match(/window\.__INITIAL_STATE__\s*=\s*({.+});/);
-    if (!jsonMatch) return items;
+    if (!const jsonMatch = html.match(/window\.__INITIAL_STATE__\s*=\s*({.+});/);
+if (!jsonMatch) {
+    console.log("[DEBUG] Kein __INITIAL_STATE__ JSON gefunden!");
+    return items;
+}
 
-    const state = JSON.parse(jsonMatch[1]);
-    const catalog = state.catalog?.items || [];
+const state = JSON.parse(jsonMatch[1]);
+console.log("[DEBUG] JSON __INITIAL_STATE__ gefunden, Keys:", Object.keys(state));
+
+const catalog = state.catalog?.items || [];
+console.log("[DEBUG] Anzahl Items im Katalog:", catalog.length);
 
     for (const it of catalog) {
       const title = it.title || "–";
@@ -96,13 +108,11 @@ async function checkSearch(search) {
   console.log(`[INFO] ${items.length} Items gefunden für Suche: "${search.name}"`);
 
   for (const item of items) {
-    if (!seen[item.url]) {
-      seen[item.url] = true;
-      await sendDiscord(item, search.name);
-    }
+  if (!seen[item.url]) {
+    seen[item.url] = true;
+    console.log("[SEND] Item würde an Discord gesendet:", item.title);
   }
 }
-
 // --- MAIN ---
 async function main() {
   console.log("Sniper Vinted gestartet, alle", config.check_interval_seconds, "Sekunden.");
