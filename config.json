@@ -1,12 +1,12 @@
 {
   "searches": [
     {
-      "name": "",
-      "query_url": "",
+      "name": "Test",
+      "query_url": "https://www.vinted.at/catalog?search_text=nike",
       "brand": "",
-      "max_price": 100,
+      "max_price": 1000,
       "quality_keywords": []
     }
   ],
-  "check_interval_seconds": 60
-} 
+  "check_interval_seconds": 30
+}
