@@ -1,33 +1,36 @@
-await webhook.send("Test Nachricht vom Vinted-Sniper!");
 const axios = require("axios");
 const { WebhookClient, EmbedBuilder } = require("discord.js");
 const fs = require("fs");
 
+// Config einlesen
 const config = JSON.parse(fs.readFileSync("config.json", "utf-8"));
+
+// Webhook erstellen
 const webhook = new WebhookClient({ url: process.env.DISCORD_WEBHOOK });
 
-let seen = {}; // pour ne pas renvoyer 2 fois la même annonce
+// Objekt, um schon gesendete Items zu speichern
+let seen = {}; // verhindert doppelte Benachrichtigungen
 
+// --- Funktionen ---
+
+// HTML von Vinted abrufen
 async function fetchVinted(url) {
   try {
     const res = await axios.get(url);
     return res.data;
   } catch (err) {
-    console.error("Erreur fetch Vinted:", err.message);
+    console.error("Fehler beim Abrufen von Vinted:", err.message);
     return null;
   }
 }
 
-// Récupère les items depuis le JSON caché dans la page
+// Items aus HTML parsen
 function parseVinted(html, search) {
   const items = [];
   try {
-    // JSON aus der Seite ziehen
     const jsonMatch = html.match(/window\.__INITIAL_STATE__\s*=\s*({.+});/);
     if (!jsonMatch) return items;
     const state = JSON.parse(jsonMatch[1]);
-
-    // Items aus dem Katalog
     const catalog = state.catalog?.items || [];
 
     for (const it of catalog) {
@@ -36,10 +39,8 @@ function parseVinted(html, search) {
       const price = it.price?.amount || "–";
       const thumb = it.photos?.[0]?.url_full || null;
 
-      // Prüfe Title + Description auf quality_keywords
       const txt = (title + " " + (it.description || "")).toLowerCase();
 
-      // Filter nach Marke, Preis und Keywords
       const brandOk = !search.brand || txt.includes(search.brand.toLowerCase());
       const priceOk = !search.max_price || (price !== "–" && price <= search.max_price);
 
@@ -53,19 +54,20 @@ function parseVinted(html, search) {
       }
     }
   } catch (err) {
-    console.error("Erreur parse JSON:", err.message);
+    console.error("Fehler beim Parsen von Vinted JSON:", err.message);
   }
   return items;
 }
 
+// Embed auf Discord senden
 async function sendDiscord(item, searchName) {
   try {
     const embed = new EmbedBuilder()
       .setTitle(item.title)
       .setURL(item.url)
       .addFields(
-        { name: "Prix", value: item.price !== "–" ? item.price + " €" : "–", inline: true },
-        { name: "Recherche", value: searchName || "–", inline: true }
+        { name: "Preis", value: item.price !== "–" ? item.price + " €" : "–", inline: true },
+        { name: "Suche", value: searchName || "–", inline: true }
       )
       .setTimestamp()
       .setColor(0x00ff00);
@@ -73,15 +75,16 @@ async function sendDiscord(item, searchName) {
     if (item.thumb) embed.setImage(item.thumb);
 
     await webhook.send({ embeds: [embed] });
-    console.log("[OK] Embed envoyé:", item.title);
+    console.log("[OK] Embed gesendet:", item.title);
   } catch (err) {
-    console.error("[ERR] Envoi Discord:", err.message);
+    console.error("[Fehler] Discord Webhook:", err.message);
   }
 }
 
+// Items prüfen und ggf. senden
 async function checkSearch(search) {
   const html = await fetchVinted(search.query_url);
-  if (!html) return; // zuerst prüfen, ob HTML existiert
+  if (!html) return;
 
   console.log("HTML Länge:", html.length);
   const items = parseVinted(html, search);
@@ -95,8 +98,19 @@ async function checkSearch(search) {
   }
 }
 
+// --- MAIN ---
 async function main() {
-  console.log("Sniper Vinted démarré toutes les", config.check_interval_seconds, "secondes.");
+  console.log("Sniper Vinted gestartet alle", config.check_interval_seconds, "Sekunden.");
+
+  // Test Webhook beim Start
+  try {
+    await webhook.send("✅ Vinted-Sniper ist online und Webhook funktioniert!");
+    console.log("Webhook-Test erfolgreich!");
+  } catch (err) {
+    console.error("Webhook-Test fehlgeschlagen:", err.message);
+  }
+
+  // Interval starten
   setInterval(async () => {
     for (const search of config.searches) {
       await checkSearch(search);
