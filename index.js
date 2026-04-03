@@ -21,18 +21,24 @@ async function fetchVinted(url) {
 function parseVinted(html, search) {
   const items = [];
   try {
-    const jsonMatch = html.match(/window\.__INITIAL_STATE__\s?=\s?({.*});/);
+    // JSON aus der Seite ziehen
+    const jsonMatch = html.match(/window\.__INITIAL_STATE__\s*=\s*({.+});/);
     if (!jsonMatch) return items;
     const state = JSON.parse(jsonMatch[1]);
+
+    // Items aus dem Katalog
     const catalog = state.catalog?.items || [];
-    
+
     for (const it of catalog) {
       const title = it.title || "–";
-      const url = "https://www.vinted.fr/items/" + it.id;
-      const price = it.price.amount || "–";
+      const url = it.url || ("https://www.vinted.fr/items/" + it.id);
+      const price = it.price?.amount || "–";
       const thumb = it.photos?.[0]?.url_full || null;
 
-      const txt = title.toLowerCase();
+      // Prüfe Title + Description auf quality_keywords
+      const txt = (title + " " + (it.description || "")).toLowerCase();
+
+      // Filter nach Marke, Preis und Keywords
       const brandOk = !search.brand || txt.includes(search.brand.toLowerCase());
       const priceOk = !search.max_price || (price !== "–" && price <= search.max_price);
 
@@ -74,8 +80,11 @@ async function sendDiscord(item, searchName) {
 
 async function checkSearch(search) {
   const html = await fetchVinted(search.query_url);
-  if (!html) return;
+  if (!html) return; // zuerst prüfen, ob HTML existiert
+
+  console.log("HTML Länge:", html.length);
   const items = parseVinted(html, search);
+  console.log("Gefundene Items:", items);
 
   for (const item of items) {
     if (!seen[item.url]) {
