@@ -2,7 +2,7 @@
   "searches": [
     {
       "name": "Test",
-      "query_url": "https://www.vinted.de/api/v2/items?search_text=nike&per_page=20&order=newest_first",
+      "query_url": "https://www.vinted.at/api/v2/catalog/items?search_text=nike&order=newest_first&per_page=20",
       "brand": "",
       "max_price": 1000,
       "quality_keywords": []
