@@ -13,24 +13,47 @@ let seen = {};
 
 // --- Funktionen ---
 
-// Vinted API abfragen
+// HTML von Vinted abrufen
 async function fetchVinted(search) {
   try {
-    const url = `https://www.vinted.at/api/v2/catalog/items?search_text=${encodeURIComponent(
-      search.query
-    )}&currency=EUR&per_page=20`;
-
+    const url = `https://www.vinted.at/catalog?search_text=${encodeURIComponent(search.query)}`;
     const res = await axios.get(url, {
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
       }
     });
-
-    return res.data.items || [];
+    return res.data;
   } catch (err) {
-    console.error("❌ Fehler beim Abrufen von Vinted API:", err.message);
-    return [];
+    console.error("❌ Fehler beim Abrufen von Vinted:", err.message);
+    return null;
   }
+}
+
+// Items aus HTML parsen
+function parseVinted(html) {
+  const items = [];
+  try {
+    const jsonMatch = html.match(/window\.__INITIAL_STATE__\s*=\s*({.+});/);
+    if (!jsonMatch) {
+      console.log("[DEBUG] Kein __INITIAL_STATE__ JSON gefunden!");
+      return items;
+    }
+
+    const state = JSON.parse(jsonMatch[1]);
+    const catalog = state.catalog?.items || [];
+
+    for (const it of catalog) {
+      const title = it.title || "–";
+      const url = `https://www.vinted.at/items/${it.id}`;
+      const price = it.price?.amount || "–";
+      const thumb = it.photos?.[0]?.url_full || null;
+
+      items.push({ title, url, price, thumb, brand: it.brand?.title || "" });
+    }
+  } catch (err) {
+    console.error("Fehler beim Parsen von Vinted JSON:", err.message);
+  }
+  return items;
 }
 
 // Item an Discord senden
@@ -38,17 +61,15 @@ async function sendDiscord(item, searchName) {
   try {
     const embed = new EmbedBuilder()
       .setTitle(item.title)
-      .setURL(`https://www.vinted.at/items/${item.id}`)
+      .setURL(item.url)
       .addFields(
-        { name: "Preis", value: item.price.amount + " " + item.price.currency, inline: true },
+        { name: "Preis", value: item.price + " €", inline: true },
         { name: "Suche", value: searchName, inline: true }
       )
       .setTimestamp()
       .setColor(0x00ff00);
 
-    if (item.photos && item.photos[0]) {
-      embed.setImage(item.photos[0].url_full);
-    }
+    if (item.thumb) embed.setImage(item.thumb);
 
     await webhook.send({ embeds: [embed] });
     console.log("[OK] Embed gesendet:", item.title);
@@ -57,19 +78,21 @@ async function sendDiscord(item, searchName) {
   }
 }
 
-// Suche prüfen und Items senden
+// Suche prüfen
 async function checkSearch(search) {
-  const items = await fetchVinted(search);
+  const html = await fetchVinted(search);
+  if (!html) return;
+
+  const items = parseVinted(html);
 
   console.log(`[INFO] ${items.length} Items gefunden für Suche: "${search.name}"`);
 
   for (const item of items) {
-    // Filter: optional nach Marke oder Max-Preis
-    const brandOk = !search.brand || item.brand?.title?.toLowerCase().includes(search.brand.toLowerCase());
-    const priceOk = !search.max_price || item.price.amount <= search.max_price;
+    const brandOk = !search.brand || item.brand.toLowerCase().includes(search.brand.toLowerCase());
+    const priceOk = !search.max_price || item.price <= search.max_price;
 
-    if (!seen[item.id] && brandOk && priceOk) {
-      seen[item.id] = true;
+    if (!seen[item.url] && brandOk && priceOk) {
+      seen[item.url] = true;
       await sendDiscord(item, search.name);
     }
   }
@@ -79,7 +102,7 @@ async function checkSearch(search) {
 async function main() {
   console.log(`🚀 Vinted Sniper läuft alle ${config.check_interval_seconds} Sekunden`);
 
-  // Test Webhook beim Start
+  // Test Webhook
   try {
     await webhook.send("✅ Vinted-Sniper ist online und Webhook funktioniert!");
     console.log("[INFO] Webhook-Test erfolgreich!");
@@ -87,7 +110,6 @@ async function main() {
     console.error("[FEHLER] Webhook-Test fehlgeschlagen:", err.message);
   }
 
-  // Intervall starten
   setInterval(async () => {
     for (const search of config.searches) {
       await checkSearch(search);
