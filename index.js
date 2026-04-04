@@ -1,22 +1,22 @@
 const axios = require("axios");
+const cheerio = require("cheerio");
 const { WebhookClient, EmbedBuilder } = require("discord.js");
 const fs = require("fs");
 
 // Config einlesen
 const config = JSON.parse(fs.readFileSync("config.json", "utf-8"));
 
-// Discord Webhook
+// Webhook erstellen
 const webhook = new WebhookClient({ url: process.env.DISCORD_WEBHOOK });
 
-// Gesendete Items merken, um doppelte Benachrichtigungen zu vermeiden
+// Schon gesendete Items speichern
 let seen = {};
 
 // --- Funktionen ---
 
 // HTML von Vinted abrufen
-async function fetchVinted(search) {
+async function fetchVinted(url) {
   try {
-    const url = `https://www.vinted.at/catalog?search_text=${encodeURIComponent(search.query)}`;
     const res = await axios.get(url, {
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
@@ -30,44 +30,41 @@ async function fetchVinted(search) {
 }
 
 // Items aus HTML parsen
-function parseVinted(html) {
+function parseVinted(html, search) {
+  const $ = cheerio.load(html);
   const items = [];
-  try {
-    const jsonMatch = html.match(/window\.__INITIAL_STATE__\s*=\s*({.+});/);
-    if (!jsonMatch) {
-      console.log("[DEBUG] Kein __INITIAL_STATE__ JSON gefunden!");
-      return items;
+
+  $("div.feed-grid__item").each((i, el) => {
+    const title = $(el).find("a.item-card__title").text().trim();
+    const url = "https://www.vinted.at" + $(el).find("a.item-card__title").attr("href");
+    const price = $(el).find("span[itemprop='price']").text().replace("€", "").trim();
+    const thumb = $(el).find("img[itemprop='image']").attr("src");
+
+    // Filter
+    const txt = title.toLowerCase();
+    const brandOk = !search.brand || txt.includes(search.brand.toLowerCase());
+    const priceOk = !search.max_price || (price && parseFloat(price) <= search.max_price);
+
+    if (brandOk && priceOk) {
+      items.push({ title, url, price, thumb });
     }
+  });
 
-    const state = JSON.parse(jsonMatch[1]);
-    const catalog = state.catalog?.items || [];
-
-    for (const it of catalog) {
-      const title = it.title || "–";
-      const url = `https://www.vinted.at/items/${it.id}`;
-      const price = it.price?.amount || "–";
-      const thumb = it.photos?.[0]?.url_full || null;
-
-      items.push({ title, url, price, thumb, brand: it.brand?.title || "" });
-    }
-  } catch (err) {
-    console.error("Fehler beim Parsen von Vinted JSON:", err.message);
-  }
   return items;
 }
 
-// Item an Discord senden
+// Discord Embed senden
 async function sendDiscord(item, searchName) {
   try {
     const embed = new EmbedBuilder()
       .setTitle(item.title)
       .setURL(item.url)
       .addFields(
-        { name: "Preis", value: item.price + " €", inline: true },
-        { name: "Suche", value: searchName, inline: true }
+        { name: "Preis", value: item.price ? item.price + " €" : "–", inline: true },
+        { name: "Suche", value: searchName || "–", inline: true }
       )
-      .setTimestamp()
-      .setColor(0x00ff00);
+      .setColor(0x00ff00)
+      .setTimestamp();
 
     if (item.thumb) embed.setImage(item.thumb);
 
@@ -78,20 +75,16 @@ async function sendDiscord(item, searchName) {
   }
 }
 
-// Suche prüfen
+// Items prüfen und senden
 async function checkSearch(search) {
-  const html = await fetchVinted(search);
+  const html = await fetchVinted(search.query_url);
   if (!html) return;
 
-  const items = parseVinted(html);
-
+  const items = parseVinted(html, search);
   console.log(`[INFO] ${items.length} Items gefunden für Suche: "${search.name}"`);
 
   for (const item of items) {
-    const brandOk = !search.brand || item.brand.toLowerCase().includes(search.brand.toLowerCase());
-    const priceOk = !search.max_price || item.price <= search.max_price;
-
-    if (!seen[item.url] && brandOk && priceOk) {
+    if (!seen[item.url]) {
       seen[item.url] = true;
       await sendDiscord(item, search.name);
     }
@@ -104,12 +97,13 @@ async function main() {
 
   // Test Webhook
   try {
-    await webhook.send("✅ Vinted-Sniper ist online und Webhook funktioniert!");
+    await webhook.send("✅ Vinted-Sniper ist online!");
     console.log("[INFO] Webhook-Test erfolgreich!");
   } catch (err) {
     console.error("[FEHLER] Webhook-Test fehlgeschlagen:", err.message);
   }
 
+  // Intervall
   setInterval(async () => {
     for (const search of config.searches) {
       await checkSearch(search);
