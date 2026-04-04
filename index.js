@@ -1,114 +1,101 @@
-const axios = require("axios");
-const cheerio = require("cheerio");
+const { chromium } = require("playwright");
 const { WebhookClient, EmbedBuilder } = require("discord.js");
 const fs = require("fs");
 
-// Config einlesen
+// Config laden
 const config = JSON.parse(fs.readFileSync("config.json", "utf-8"));
 
-// Webhook erstellen
+// Webhook
 const webhook = new WebhookClient({ url: process.env.DISCORD_WEBHOOK });
 
-// Schon gesendete Items speichern
+// Cache
 let seen = {};
 
-// --- Funktionen ---
-
-// HTML von Vinted abrufen
-async function fetchVinted(url) {
-  try {
-    const res = await axios.get(url, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-      }
-    });
-    return res.data;
-  } catch (err) {
-    console.error("❌ Fehler beim Abrufen von Vinted:", err.message);
-    return null;
-  }
-}
-
-// Items aus HTML parsen
-function parseVinted(html, search) {
-  const $ = cheerio.load(html);
-  const items = [];
-
-  $("div.feed-grid__item").each((i, el) => {
-    const title = $(el).find("a.item-card__title").text().trim();
-    const url = "https://www.vinted.at" + $(el).find("a.item-card__title").attr("href");
-    const price = $(el).find("span[itemprop='price']").text().replace("€", "").trim();
-    const thumb = $(el).find("img[itemprop='image']").attr("src");
-
-    // Filter
-    const txt = title.toLowerCase();
-    const brandOk = !search.brand || txt.includes(search.brand.toLowerCase());
-    const priceOk = !search.max_price || (price && parseFloat(price) <= search.max_price);
-
-    if (brandOk && priceOk) {
-      items.push({ title, url, price, thumb });
-    }
+async function startBrowser() {
+  return await chromium.launch({
+    headless: true,
+    args: ["--no-sandbox", "--disable-setuid-sandbox"]
   });
-
-  return items;
 }
 
-// Discord Embed senden
+async function fetchItems(page, search) {
+  await page.goto(search.query_url, { waitUntil: "domcontentloaded" });
+
+  // wichtig: warten bis content geladen ist
+  await page.waitForSelector("div.feed-grid__item", { timeout: 15000 });
+
+  return await page.evaluate(() => {
+    const items = [];
+    document.querySelectorAll("div.feed-grid__item").forEach(el => {
+      const titleEl = el.querySelector("a.item-card__title");
+      const priceEl = el.querySelector("span[itemprop='price']");
+      const imgEl = el.querySelector("img[itemprop='image']");
+
+      if (!titleEl) return;
+
+      items.push({
+        title: titleEl.innerText.trim(),
+        url: "https://www.vinted.at" + titleEl.getAttribute("href"),
+        price: priceEl ? priceEl.innerText.replace("€", "").trim() : null,
+        thumb: imgEl ? imgEl.src : null
+      });
+    });
+    return items;
+  });
+}
+
 async function sendDiscord(item, searchName) {
-  try {
-    const embed = new EmbedBuilder()
-      .setTitle(item.title)
-      .setURL(item.url)
-      .addFields(
-        { name: "Preis", value: item.price ? item.price + " €" : "–", inline: true },
-        { name: "Suche", value: searchName || "–", inline: true }
-      )
-      .setColor(0x00ff00)
-      .setTimestamp();
+  const embed = new EmbedBuilder()
+    .setTitle(item.title)
+    .setURL(item.url)
+    .addFields(
+      { name: "Preis", value: item.price ? item.price + " €" : "–", inline: true },
+      { name: "Suche", value: searchName || "–", inline: true }
+    )
+    .setColor(0x00ff00)
+    .setTimestamp();
 
-    if (item.thumb) embed.setImage(item.thumb);
+  if (item.thumb) embed.setImage(item.thumb);
 
-    await webhook.send({ embeds: [embed] });
-    console.log("[OK] Embed gesendet:", item.title);
-  } catch (err) {
-    console.error("[Fehler] Discord Webhook:", err.message);
-  }
+  await webhook.send({ embeds: [embed] });
+  console.log("[OK]", item.title);
 }
 
-// Items prüfen und senden
-async function checkSearch(search) {
-  const html = await fetchVinted(search.query_url);
-  if (!html) return;
+async function checkSearch(page, search) {
+  try {
+    const items = await fetchItems(page, search);
 
-  const items = parseVinted(html, search);
-  console.log(`[INFO] ${items.length} Items gefunden für Suche: "${search.name}"`);
+    console.log(`[INFO] ${items.length} Items für "${search.name}"`);
 
-  for (const item of items) {
-    if (!seen[item.url]) {
-      seen[item.url] = true;
-      await sendDiscord(item, search.name);
+    for (const item of items) {
+      const txt = item.title.toLowerCase();
+
+      const brandOk = !search.brand || txt.includes(search.brand.toLowerCase());
+      const priceOk = !search.max_price || (item.price && parseFloat(item.price) <= search.max_price);
+
+      if (brandOk && priceOk) {
+        if (!seen[item.url]) {
+          seen[item.url] = true;
+          await sendDiscord(item, search.name);
+        }
+      }
     }
+  } catch (err) {
+    console.log("❌ Fehler:", err.message);
   }
 }
 
-// --- MAIN ---
-async function main() {
-  console.log(`🚀 Vinted Sniper läuft alle ${config.check_interval_seconds} Sekunden`);
+(async () => {
+  const browser = await startBrowser();
+  const page = await browser.newPage();
 
-  // Test Webhook
-  try {
-    await webhook.send("✅ Vinted-Sniper ist online!");
-    console.log("[INFO] Webhook-Test erfolgreich!");
-  } catch (err) {
-    console.error("[FEHLER] Webhook-Test fehlgeschlagen:", err.message);
-  }
+  console.log("🚀 Bot läuft...");
 
-  // Intervall
+  await webhook.send("✅ Vinted Bot online!");
+
   setInterval(async () => {
     for (const search of config.searches) {
-      await checkSearch(search);
+      await checkSearch(page, search);
     }
   }, config.check_interval_seconds * 1000);
-}
-
-main();
+})();
