@@ -1,11 +1,11 @@
 {
-  "check_interval_seconds": 30,
+  "check_interval_seconds": 20,
   "searches": [
     {
       "name": "Nike",
-      "query_url": "https://www.vinted.at/catalog?search_text=Nike",
-      "brand": "Nike",
-      "max_price": 150
+      "query_url": "https://www.vinted.at/catalog?search_text=nike",
+      "brand": "nike",
+      "max_price": 50
     }
   ]
 }
