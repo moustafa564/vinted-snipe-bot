@@ -8,23 +8,21 @@ const config = JSON.parse(fs.readFileSync("config.json", "utf-8"));
 // Webhook erstellen
 const webhook = new WebhookClient({ url: process.env.DISCORD_WEBHOOK });
 
-// Objekt, um schon gesendete Items zu speichern
-let seen = {}; // verhindert doppelte Benachrichtigungen
+// Schon gesendete Items speichern, um doppelte Benachrichtigungen zu vermeiden
+let seen = {};
 
 // --- Funktionen ---
 
-// Items von Vinted API abrufen
+// Vinted API abrufen
 async function fetchVinted(url) {
   try {
     const res = await axios.get(url, {
       headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-                      "(KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36",
-        "Accept": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
       }
     });
 
-    console.log("[DEBUG] Items von API erhalten:", res.data.items?.length || 0);
+    console.log(`[DEBUG] Items von API erhalten: ${res.data.items?.length || 0}`);
     return res.data.items || [];
   } catch (err) {
     console.error("Fehler beim Abrufen von Vinted API:", err.message);
@@ -32,30 +30,30 @@ async function fetchVinted(url) {
   }
 }
 
-// Items filtern nach Preis, Marke, Keywords
-function filterItems(items, search) {
-  return items.filter(it => {
-    const title = it.title || "";
-    const description = it.description || "";
-    const txt = (title + " " + description).toLowerCase();
+// Items filtern nach Suchkriterien
+function parseVinted(items, search) {
+  const results = [];
 
-    const brandOk = !search.brand || txt.includes(search.brand.toLowerCase());
-    const priceOk = !search.max_price || (it.price?.amount && it.price.amount <= search.max_price);
-    let qualityOk = true;
-    if (search.quality_keywords && search.quality_keywords.length > 0) {
-      qualityOk = search.quality_keywords.some(q => txt.includes(q.toLowerCase()));
+  for (const it of items) {
+    const title = it.title || "–";
+    const url = it.url || `https://www.vinted.de/items/${it.id}`;
+    const price = it.price?.amount || "–";
+    const thumb = it.photos?.[0]?.url_full || null;
+
+    const txt = (title + " " + (it.description || "")).toLowerCase();
+
+    const brandOk = txt.includes(search.brand.toLowerCase());
+    const priceOk = !search.max_price || (price !== "–" && price <= search.max_price);
+
+    if (brandOk && priceOk) {
+      results.push({ title, url, price, thumb });
     }
+  }
 
-    return brandOk && priceOk && qualityOk;
-  }).map(it => ({
-    title: it.title,
-    url: it.url || `https://www.vinted.fr/items/${it.id}`,
-    price: it.price?.amount || "–",
-    thumb: it.photos?.[0]?.url_full || null
-  }));
+  return results;
 }
 
-// Embed auf Discord senden
+// Embed an Discord senden
 async function sendDiscord(item, searchName) {
   try {
     const embed = new EmbedBuilder()
@@ -73,17 +71,20 @@ async function sendDiscord(item, searchName) {
     await webhook.send({ embeds: [embed] });
     console.log("[OK] Embed gesendet:", item.title);
   } catch (err) {
-    console.error("[Fehler] Discord Webhook:", err.message);
+    console.error("[FEHLER] Discord Webhook:", err.message);
   }
 }
 
 // Items prüfen und ggf. senden
 async function checkSearch(search) {
   const items = await fetchVinted(search.query_url);
-  if (!items.length) return;
+  if (!items.length) {
+    console.log(`[INFO] Keine Items gefunden für Suche: "${search.name}"`);
+    return;
+  }
 
-  const filtered = filterItems(items, search);
-  console.log(`[INFO] ${filtered.length} Items nach Filter für Suche: "${search.name}"`);
+  const filtered = parseVinted(items, search);
+  console.log(`[INFO] ${filtered.length} Items gefunden für Suche: "${search.name}"`);
 
   for (const item of filtered) {
     if (!seen[item.url]) {
@@ -107,8 +108,9 @@ async function main() {
 
   // Interval starten
   setInterval(async () => {
-    const search = config.searches[0]; // nur erste Suche
-    await checkSearch(search);
+    for (const search of config.searches) {
+      await checkSearch(search);
+    }
   }, config.check_interval_seconds * 1000);
 }
 
