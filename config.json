@@ -1,11 +1,18 @@
 {
-  "check_interval_seconds": 20,
+  "discord_webhook": "https://discord.com/api/webhooks/1472301283707846778/0udTwuQ02ZXmqI8CG8_GBCyIPkJpyvcxjXbw4aDGlEuI15PSLzyNCXHLU-fGk4B7ngWI",
+  "check_interval_seconds": 60,
   "searches": [
     {
-      "name": "Nike",
-      "query_url": "https://www.vinted.at/catalog?search_text=nike",
-      "brand": "nike",
-      "max_price": 50
+      "name": "Nike Schuhe",
+      "query_url": "https://www.vinted.at/vetements?search_text=Nike",
+      "brand": "Nike",
+      "max_price": 100
+    },
+    {
+      "name": "Adidas Jacke",
+      "query_url": "https://www.vinted.at/vetements?search_text=Adidas",
+      "brand": "Adidas",
+      "max_price": 150
     }
   ]
 }
