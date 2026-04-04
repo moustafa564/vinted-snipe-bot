@@ -3,7 +3,7 @@
   "searches": [
     {
       "name": "Nike",
-      "query": "Nike",
+      "query_url": "https://www.vinted.at/catalog?search_text=Nike",
       "brand": "Nike",
       "max_price": 150
     }
