@@ -1,13 +1,13 @@
 {
-  "name": "vinted-snipe-bot",
+  "name": "vinted-sniper",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "postinstall": "npx playwright install --with-deps"
+    "postinstall": "playwright install chromium"
   },
   "dependencies": {
-    "playwright": "^1.40.0",
+    "puppeteer-core": "^20.7.4",
     "discord.js": "^14.14.1"
   }
 }
